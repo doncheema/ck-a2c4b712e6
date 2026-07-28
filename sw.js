@@ -2,7 +2,7 @@
    Offline shell cache + Web Push handlers. Documents are ALWAYS network-first with the
    HTTP cache bypassed: the app is one republished HTML document, and any cached copy
    silently pins the installed app to an old build. */
-const CACHE = 'cockpit-v3';
+const CACHE = 'cockpit-v4';
 const SHELL = ['./index.html', './manifest.webmanifest', './icon-180.png', './icon-192.png', './icon-512.png'];
 const TABS = ['now', 'board', 'prep', 'money', 'frontier'];
 
@@ -22,6 +22,11 @@ self.addEventListener('fetch', e => {
   const url = new URL(e.request.url);
   if (e.request.method !== 'GET') return;
   if (url.hostname === 'api.linear.app') return;          // always live
+
+  // JSON is DATA (board seed, frontier, samples): always live, never cached — a
+  // cache-first hit here pinned the dev board to a 40-issue seed while the file
+  // on disk had 553. Production bakes these, but dev and any future fetch must not pin.
+  if (url.pathname.endsWith('.json')) return;
 
   const isDoc = e.request.mode === 'navigate' ||
                 e.request.destination === 'document' ||
