@@ -1,6 +1,6 @@
 /* Hemut Cockpit service worker.
    Phase 1: offline shell cache. Phase 3 fills in push (handlers stubbed below). */
-const CACHE = 'cockpit-v1';
+const CACHE = 'cockpit-v2';
 const SHELL = ['./', './index.html', './manifest.webmanifest', './icon-180.png', './icon-192.png', './icon-512.png'];
 
 self.addEventListener('install', e => {
@@ -22,12 +22,33 @@ self.addEventListener('fetch', e => {
   if (e.request.method !== 'GET') return;
   if (url.hostname === 'api.linear.app') return;          // always live
   if (url.pathname.startsWith('/data/') || url.pathname.startsWith('/notify')) return; // service, always live
+
+  // The app is one HTML document that is REPUBLISHED with fresh baked data. If the
+  // document is served from any cache (SW or HTTP), the installed app silently pins to
+  // an old build. So documents always go to the network with the HTTP cache bypassed;
+  // the cached copy is strictly an offline fallback.
+  const isDoc = e.request.mode === 'navigate' ||
+                (e.request.destination === 'document') ||
+                url.pathname.endsWith('/') || url.pathname.endsWith('.html');
+
+  if (isDoc) {
+    e.respondWith(
+      fetch(url.href, { cache: 'no-store' }).then(r => {
+        const copy = r.clone();
+        caches.open(CACHE).then(c => c.put('./index.html', copy)).catch(() => {});
+        return r;
+      }).catch(() => caches.match('./index.html').then(m => m || Response.error()))
+    );
+    return;
+  }
+
+  // Static companions (icons, manifest, sw assets): cache-first is fine, they rarely change.
   e.respondWith(
-    fetch(e.request).then(r => {
+    caches.match(e.request).then(m => m || fetch(e.request).then(r => {
       const copy = r.clone();
       caches.open(CACHE).then(c => c.put(e.request, copy)).catch(() => {});
       return r;
-    }).catch(() => caches.match(e.request).then(m => m || caches.match('./index.html')))
+    }))
   );
 });
 
